@@ -1,0 +1,9 @@
+{
+  "name": "comfyui-dictkeynav",
+  "private": true,
+  "type": "module",
+  "description": "Only used to run the unit tests: npm test",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs"
+  }
+}
