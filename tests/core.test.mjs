@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-	classify, findCounterparts, buildMenuItem, menuItemsFor, keysFromDictText, nodeDefMentionsDict,
+	classify, findCounterparts, buildMenuItem, menuItemsFor, keysFromDictText, nodeDefMentionsDict, prependWithSeparator,
 } from "../web/dict_key_nav_core.js";
 
 let nextId = 1;
@@ -153,10 +153,10 @@ test("layout: several keys -> one entry per key, nested when a key has several n
 	const item = buildMenuItem("getters", findCounterparts(creator2, "getters", g), env);
 	assert.equal(item.content, "DICT getters (3)");
 	const [aEntry, soloEntry] = item.submenu.options;
-	assert.equal(aEntry.content, "a (2)");
+	assert.equal(aEntry.content, '"a" (2)');
 	assert.equal(aEntry.has_submenu, true);
 	assert.deepEqual(aEntry.submenu.options.map((o) => o.content), [getA1, getA2].map(env.label));
-	assert.equal(soloEntry.content, `solo → ${env.label(lone)}`);
+	assert.equal(soloEntry.content, `"solo" → ${env.label(lone)}`);
 	soloEntry.callback();
 	assert.equal(jumps.at(-1), lone);
 
@@ -167,7 +167,7 @@ test("layout: several keys -> one entry per key, nested when a key has several n
 	// One-level menus (Vue node menu) call it without an event: pop up the list.
 	aEntry.callback(aEntry, {}, undefined, undefined, aEntry);
 	assert.equal(fallbacks.length, before + 1);
-	assert.equal(fallbacks.at(-1).title, "a");
+	assert.equal(fallbacks.at(-1).title, '"a"');
 	assert.equal(fallbacks.at(-1).options.length, 2);
 });
 
@@ -186,4 +186,37 @@ test("at most one getters item and one setters item; none when nothing matches",
 test("a node is never listed as its own counterpart", () => {
 	const sd = bdhSetDefault("q");
 	assert.deepEqual(menuItemsFor(sd, graphOf([sd]), env), []);
+});
+
+test("key is named when the node has several keys but only one key matched", () => {
+	const twoKeys = bdhCreate([["a", 1], ["unread", 2]]);
+	const g1 = graphOf([twoKeys, getA1]);
+	assert.deepEqual(menuItemsFor(twoKeys, g1, env).map((i) => i.content), [`Go to DICT getter of "a": ${env.label(getA1)}`]);
+
+	const twoKeysB = bdhCreate([["a", 1], ["unread", 2]]);
+	const g2 = graphOf([twoKeysB, getA1, getA2]);
+	const [item] = menuItemsFor(twoKeysB, g2, env);
+	assert.equal(item.content, 'DICT getters of "a" (2)');
+	assert.equal(item.submenu.title, 'DICT getters of "a"');
+	assert.deepEqual(item.submenu.options.map((o) => o.content), [getA1, getA2].map(env.label));
+});
+
+test("key is not repeated when the node has only one key", () => {
+	const one = bdhSet("a");
+	const [item] = menuItemsFor(one, graphOf([one, getA1]), env);
+	assert.equal(item.content, `Go to DICT getter: ${env.label(getA1)}`);
+});
+
+test("prependWithSeparator puts items first, then one separator", () => {
+	const opts = [{ content: "Inputs" }, null, { content: "Remove" }];
+	prependWithSeparator(opts, [{ content: "X" }]);
+	assert.deepEqual(opts.map((o) => o && o.content), ["X", null, "Inputs", null, "Remove"]);
+
+	const startsWithSep = [null, { content: "Y" }];
+	prependWithSeparator(startsWithSep, [{ content: "X" }]);
+	assert.deepEqual(startsWithSep.map((o) => o && o.content), ["X", null, "Y"]);
+
+	const untouched = [{ content: "Y" }];
+	prependWithSeparator(untouched, []);
+	assert.equal(untouched.length, 1);
 });

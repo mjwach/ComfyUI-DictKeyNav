@@ -229,14 +229,22 @@ export function allGraphs(rootGraph) {
 }
 
 /**
+ * The keys `node` itself uses on its side of `direction`: the keys it sets
+ * when looking for "getters", the keys it gets when looking for "setters".
+ */
+export function ownKeys(node, direction) {
+	const mine = classify(node);
+	return direction === "getters" ? mine.setterKeys : mine.getterKeys;
+}
+
+/**
  * Nodes on the other side of `node` for the given direction.
  * direction "getters": node's set keys -> nodes that get those keys.
  * direction "setters": node's get keys -> nodes that set those keys.
  * Returns [{ key, nodes }] in the order the keys appear on `node`.
  */
 export function findCounterparts(node, direction, rootGraph) {
-	const mine = classify(node);
-	const myKeys = direction === "getters" ? mine.setterKeys : mine.getterKeys;
+	const myKeys = ownKeys(node, direction);
 	if (myKeys.length === 0) return [];
 
 	const byKey = new Map(myKeys.map((k) => [k, []]));
@@ -256,45 +264,55 @@ export function findCounterparts(node, direction, rootGraph) {
 // ---------------------------------------------------------------------------
 // Menu building (follows the layout rules in README.md).
 
+/** How a key is shown in menu text. */
+export function quoteKey(key) {
+	return `"${key}"`;
+}
+
 /**
  * @param {"getters"|"setters"} direction
  * @param {{key: string, nodes: any[]}[]} matches from findCounterparts
  * @param {{ label: (node) => string, jump: (node) => void, openFallback: (options, title) => void }} env
+ * @param {{ showKey?: boolean }} [opts] showKey: name the key even when all
+ *   matches share one key. Used when the right-clicked node has several keys
+ *   on this side, so the menu doesn't leave you guessing which one matched.
  * @returns a LiteGraph context-menu item, or null when there is nothing to offer
  */
-export function buildMenuItem(direction, matches, env) {
+export function buildMenuItem(direction, matches, env, opts = {}) {
 	const noun = direction === "getters" ? "getter" : "setter";
 	const distinct = [];
 	for (const m of matches) for (const n of m.nodes) if (!distinct.includes(n)) distinct.push(n);
 	if (distinct.length === 0) return null;
 
 	const link = (content, target) => ({ content, callback: () => env.jump(target) });
+	const singleKey = matches.length === 1;
+	const ofKey = singleKey && opts.showKey ? ` of ${quoteKey(matches[0].key)}` : "";
 
 	// One counterpart in total: the main item jumps straight to it.
 	if (distinct.length === 1) {
-		return link(`Go to DICT ${noun}: ${env.label(distinct[0])}`, distinct[0]);
+		return link(`Go to DICT ${noun}${ofKey}: ${env.label(distinct[0])}`, distinct[0]);
 	}
 
-	const title = `DICT ${noun}s`;
+	const title = `DICT ${noun}s${ofKey}`;
 	let options;
-	if (matches.length === 1) {
+	if (singleKey) {
 		// Everything is about one key: list the nodes directly.
 		options = matches[0].nodes.map((n) => link(env.label(n), n));
 	} else {
 		// One entry per key.
 		options = matches.map(({ key, nodes }) => {
-			if (nodes.length === 1) return link(`${key} → ${env.label(nodes[0])}`, nodes[0]);
+			if (nodes.length === 1) return link(`${quoteKey(key)} → ${env.label(nodes[0])}`, nodes[0]);
 			const inner = nodes.map((n) => link(env.label(n), n));
 			return {
-				content: `${key} (${nodes.length})`,
+				content: `${quoteKey(key)} (${nodes.length})`,
 				has_submenu: true,
-				submenu: { title: key, options: inner },
+				submenu: { title: quoteKey(key), options: inner },
 				// The classic LiteGraph menu opens `submenu` itself and passes a
 				// real event here, so this does nothing there. Menus that only
 				// support one submenu level (the newer Vue node menu) call this
 				// without an event instead; then pop the list up separately.
 				callback: (_value, _options, event) => {
-					if (event === undefined) env.openFallback(inner, key);
+					if (event === undefined) env.openFallback(inner, quoteKey(key));
 				},
 			};
 		});
@@ -310,10 +328,21 @@ export function buildMenuItem(direction, matches, env) {
 export function menuItemsFor(node, rootGraph, env) {
 	const items = [];
 	for (const direction of ["getters", "setters"]) {
-		const item = buildMenuItem(direction, findCounterparts(node, direction, rootGraph), env);
+		const showKey = ownKeys(node, direction).length > 1;
+		const item = buildMenuItem(direction, findCounterparts(node, direction, rootGraph), env, { showKey });
 		if (item) items.push(item);
 	}
 	return items;
+}
+
+/**
+ * Puts `items` at the top of a LiteGraph menu option list, followed by a
+ * separator (null). Mutates `options`. Doesn't double up separators.
+ */
+export function prependWithSeparator(options, items) {
+	if (!Array.isArray(options) || items.length === 0) return;
+	const block = options.length > 0 && options[0] !== null ? [...items, null] : [...items];
+	options.unshift(...block);
 }
 
 /** Whether a node definition (from /object_info) involves DICT at all. */

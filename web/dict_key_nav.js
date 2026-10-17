@@ -4,12 +4,15 @@
 // jump between nodes that set a DICT key and nodes that get the same key.
 //
 // Interference policy: this extension never replaces or wraps global
-// LiteGraph/ComfyUI functions. On current frontends it only uses the official
-// getNodeMenuItems hook. On older frontends without that hook it chains onto
-// getExtraMenuOptions, and only for node types that have a DICT socket.
+// LiteGraph/ComfyUI functions. It chains onto getExtraMenuOptions only for
+// node types that have a DICT socket, always calling whatever was there
+// before (the same way ComfyUI's own mask editor adds its menu item). That
+// hook is what lets the items go at the top of the menu, like KJNodes'
+// Set/Get items; ComfyUI's newer getNodeMenuItems hook can only append them
+// at the bottom.
 
 import { app } from "../../scripts/app.js";
-import { menuItemsFor, nodeClass, nodeDefMentionsDict } from "./dict_key_nav_core.js";
+import { menuItemsFor, nodeClass, nodeDefMentionsDict, prependWithSeparator } from "./dict_key_nav_core.js";
 
 const EXTENSION_NAME = "DictKeyNav.Navigation";
 
@@ -50,12 +53,9 @@ async function jump(target) {
 		}
 		if (canvas.graph !== graph) return;
 
+		// Pan so the node is centred, keeping the current zoom (as KJNodes does).
+		if (typeof canvas.centerOnNode === "function") canvas.centerOnNode(target);
 		if (typeof canvas.selectNode === "function") canvas.selectNode(target, false);
-		if (typeof canvas.animateToBounds === "function" && target.boundingRect) {
-			canvas.animateToBounds(target.boundingRect);
-		} else if (typeof canvas.centerOnNode === "function") {
-			canvas.centerOnNode(target);
-		}
 		canvas.setDirty?.(true, true);
 	} catch (err) {
 		console.warn("[DICT Key Navigator] could not jump to node", target?.id, err);
@@ -98,31 +98,21 @@ function itemsFor(node) {
 	}
 }
 
-const extension = {
+app.registerExtension({
 	name: EXTENSION_NAME,
 	setup() {
 		const opts = { capture: true, passive: true };
 		document.addEventListener("pointerdown", rememberPointer, opts);
 		document.addEventListener("pointerup", rememberPointer, opts);
 	},
-};
-
-if (typeof app.collectNodeMenuItems === "function") {
-	// Current frontends: the official hook, used by both the classic
-	// right-click menu and the newer node "more options" menu.
-	extension.getNodeMenuItems = itemsFor;
-} else {
-	// Older frontends: chain onto getExtraMenuOptions for DICT node types only.
-	extension.beforeRegisterNodeDef = (nodeType, nodeData) => {
+	beforeRegisterNodeDef(nodeType, nodeData) {
 		if (!nodeDefMentionsDict(nodeData)) return;
 		const previous = nodeType.prototype.getExtraMenuOptions;
 		nodeType.prototype.getExtraMenuOptions = function (canvas, options) {
 			const result = previous?.apply(this, arguments);
-			const items = itemsFor(this);
-			if (items.length && Array.isArray(options)) options.push(...items);
+			// Added after the previous handler runs, so these end up first.
+			prependWithSeparator(options, itemsFor(this));
 			return result;
 		};
-	};
-}
-
-app.registerExtension(extension);
+	},
+});

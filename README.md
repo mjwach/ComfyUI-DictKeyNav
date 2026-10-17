@@ -17,21 +17,30 @@ browser tab.
 
 ## The menu
 
-On a node, this pack adds at most one getters item and one setters item:
+On a node, this pack adds at most one getters item and one setters item, at
+the top of the right-click menu, followed by a separator line:
 
 - **One counterpart in total:** a single item, `Go to DICT getter: <node>`,
   that jumps straight there.
 - **Several, all for the same key:** `DICT getters (n)` opens a list of them.
 - **Several keys:** `DICT getters (n)` opens one entry per key. A key with one
-  getter is a direct link (`key → <node>`); a key with several opens a further
-  submenu listing them.
+  getter is a direct link (`"key" → <node>`); a key with several opens a
+  further submenu listing them.
+
+If the node you right-clicked has more than one key on that side (for example
+a create node that sets two keys) but only one of its keys has matches, the
+item names that key: `Go to DICT getter of "a": <node>` or
+`DICT getters of "a" (n)`.
 
 Nodes inside a subgraph are labelled `(in <subgraph name>)`; jumping to one
-opens that subgraph first. Jumping selects the node and centres the view on it.
+opens that subgraph first. Jumping selects the node and pans the view to
+centre it, without changing the zoom.
 
-ComfyUI's newer node menu (the one in "Vue nodes" mode) only supports one
-level of submenu. There, choosing a key that has several nodes pops up a small
-separate menu with those nodes at the pointer.
+ComfyUI's newer node menu (the one in "Vue nodes" mode) works differently:
+- It always moves every extension's items into an "Extensions" section near
+  the bottom, so the items can't be placed at the top there.
+- It only supports one level of submenu. Choosing a key that has several
+  nodes pops up a small separate menu with those nodes at the pointer.
 
 ## Which nodes count as getters and setters
 
@@ -62,12 +71,14 @@ subgraph input, the key is skipped rather than guessed.
 
 ## Compatibility
 
-- On current ComfyUI frontends it uses only the official `getNodeMenuItems`
-  extension hook, which feeds both the classic and the newer node menus. It
-  does not patch any LiteGraph or ComfyUI functions.
-- On older frontends without that hook, it chains onto `getExtraMenuOptions`,
-  only for node types that have a `DICT` socket, and always calls whatever was
-  there before.
+- It adds its items by chaining onto `getExtraMenuOptions`, only for node types
+  that have a `DICT` socket, and always calls whatever was there before. This
+  is the same way ComfyUI's own mask editor adds its menu item. It does not
+  patch any global LiteGraph or ComfyUI functions.
+- ComfyUI's newer `getNodeMenuItems` hook would be even less intrusive, but it
+  can only add items at the bottom of the menu.
+- If another pack also inserts items at the top of the menu for the same
+  nodes, whichever pack loads later ends up first.
 - It never throws into ComfyUI: any error inspecting a node is logged to the
   browser console and that node is skipped.
 
